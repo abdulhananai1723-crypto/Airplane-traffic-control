@@ -1,56 +1,323 @@
-elif menu == "Manage Takeoff / Landing":
-    st.subheader("Manage Takeoff & Landing")
+import streamlit as st import pandas as pd from pathlib import Path from datetime import datetime, date, time
 
-    if df.empty:
-        st.info("No records available.")
-    else:
-        operation_filter = st.selectbox(
-            "Show flights",
-            ["All", "Takeoff", "Landing"]
+DAILY_PLAN_FILE = Path("daily_flight_plan.csv")
+
+PLAN_COLUMNS = [ "Flight No", "Airline", "Type", "From", "To", "Scheduled Time", "Passengers", "Gate", "Counter / Belt", "Staff Required", "Vehicle Required", "Arrangement Notes", "Status", ]
+
+-----------------------------
+
+Data Functions
+
+-----------------------------
+
+def load_plan() -> pd.DataFrame: if DAILY_PLAN_FILE.exists(): return pd.read_csv(DAILY_PLAN_FILE) return pd.DataFrame(columns=PLAN_COLUMNS)
+
+def save_plan(df: pd.DataFrame) -> None: df.to_csv(DAILY_PLAN_FILE, index=False)
+
+def calculate_arrangements(row: dict) -> dict: passengers = int(row.get("Passengers", 0) or 0) flight_type = row.get("Type", "Departure")
+
+if passengers <= 80:
+    staff = 3
+    vehicle = "1 airport van"
+elif passengers <= 160:
+    staff = 5
+    vehicle = "1 airport van + 1 luggage trolley team"
+else:
+    staff = 8
+    vehicle = "2 airport vans + 2 luggage trolley teams"
+
+if flight_type == "Arrival":
+    counter_or_belt = "Belt 1"
+    notes = "Passenger receiving, baggage belt handling, transport coordination."
+else:
+    counter_or_belt = "Counter 1"
+    notes = "Check-in support, boarding coordination, gate readiness."
+
+row["Staff Required"] = staff
+row["Vehicle Required"] = vehicle
+row["Counter / Belt"] = counter_or_belt
+row["Arrangement Notes"] = notes
+row["Status"] = "Planned"
+return row
+
+-----------------------------
+
+Page Config & Styling
+
+-----------------------------
+
+st.set_page_config( page_title="Airport Operations Control Center", page_icon="✈️", layout="wide", initial_sidebar_state="expanded", )
+
+st.markdown( """ <style> .stApp { background-color: #f4f7fb; }
+
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #0f172a, #1e293b);
+}
+
+[data-testid="stSidebar"] * {
+    color: white;
+}
+
+.main-title {
+    font-size: 42px;
+    font-weight: 800;
+    color: #0f172a;
+    margin-bottom: 4px;
+}
+
+.subtitle {
+    font-size: 16px;
+    color: #475569;
+    margin-bottom: 24px;
+}
+
+.section-box {
+    background: white;
+    padding: 22px;
+    border-radius: 16px;
+    box-shadow: 0px 4px 18px rgba(15, 23, 42, 0.08);
+    margin-bottom: 20px;
+    border: 1px solid #e2e8f0;
+}
+
+.small-label {
+    color: #64748b;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.stButton > button {
+    background: linear-gradient(90deg, #2563eb, #1d4ed8);
+    color: white;
+    border-radius: 10px;
+    border: none;
+    padding: 10px 22px;
+    font-weight: 700;
+}
+
+.stButton > button:hover {
+    background: linear-gradient(90deg, #1d4ed8, #1e40af);
+    color: white;
+}
+
+h1, h2, h3 {
+    color: #0f172a;
+}
+</style>
+""",
+unsafe_allow_html=True,
+
+)
+
+st.markdown( '<div class="main-title">✈️ Airport Operations Control Center</div>', unsafe_allow_html=True, ) st.markdown( '<div class="subtitle">Professional dashboard for daily arrivals, departures, staff planning, gate allocation, and airport coordination.</div>', unsafe_allow_html=True, )
+
+-----------------------------
+
+Sidebar Menu
+
+-----------------------------
+
+menu = st.sidebar.radio( "Operations Menu", [ "1. Daily Flight Entry", "2. Generate Arrangements", "3. View Final Plan", "4. Edit / Update Plan", "5. Delete Flight", ], )
+
+plan_df = load_plan()
+
+-----------------------------
+
+1. Daily Flight Entry
+
+-----------------------------
+
+if menu == "1. Daily Flight Entry": st.markdown('<div class="section-box">', unsafe_allow_html=True) st.subheader("Daily Flight Entry") st.info("Sab se pehle aaj ki incoming aur outgoing flights enter karein.")
+
+incoming_count = st.number_input("Aaj kitni flights aani hain?", min_value=0, step=1)
+outgoing_count = st.number_input("Aaj kitni flights jani hain?", min_value=0, step=1)
+st.markdown("</div>", unsafe_allow_html=True)
+
+st.markdown('<div class="section-box">', unsafe_allow_html=True)
+st.subheader("Flight Details")
+
+with st.form("daily_flight_entry_form"):
+    new_rows = []
+
+    st.markdown("### Arrivals / Aani wali flights")
+    for i in range(int(incoming_count)):
+        st.markdown(f"**Arrival Flight {i + 1}**")
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            flight_no = st.text_input(f"Flight No {i + 1}", key=f"arr_flight_{i}")
+            airline = st.text_input(f"Airline {i + 1}", key=f"arr_airline_{i}")
+
+        with col2:
+            origin = st.text_input(f"From {i + 1}", key=f"arr_from_{i}")
+            arrival_time = st.time_input(f"Arrival Time {i + 1}", key=f"arr_time_{i}")
+
+        with col3:
+            passengers = st.number_input(
+                f"Passengers {i + 1}", min_value=0, step=1, key=f"arr_pass_{i}"
+            )
+            gate = st.text_input(f"Gate {i + 1}", key=f"arr_gate_{i}")
+
+        new_rows.append(
+            {
+                "Flight No": flight_no.upper(),
+                "Airline": airline,
+                "Type": "Arrival",
+                "From": origin,
+                "To": "Current Airport",
+                "Scheduled Time": datetime.combine(date.today(), arrival_time).strftime(
+                    "%Y-%m-%d %H:%M"
+                ),
+                "Passengers": passengers,
+                "Gate": gate,
+            }
         )
 
-        filtered_df = df.copy()
+    st.markdown("### Departures / Jani wali flights")
+    for i in range(int(outgoing_count)):
+        st.markdown(f"**Departure Flight {i + 1}**")
+        col1, col2, col3 = st.columns(3)
 
-        if operation_filter != "All":
-            filtered_df = filtered_df[filtered_df["Operation"] == operation_filter]
+        with col1:
+            flight_no = st.text_input(f"Flight No {i + 1}", key=f"dep_flight_{i}")
+            airline = st.text_input(f"Airline {i + 1}", key=f"dep_airline_{i}")
 
-        st.dataframe(filtered_df, use_container_width=True)
+        with col2:
+            destination = st.text_input(f"To / Destination {i + 1}", key=f"dep_to_{i}")
+            departure_time = st.time_input(f"Departure Time {i + 1}", key=f"dep_time_{i}")
 
-        st.divider()
+        with col3:
+            passengers = st.number_input(
+                f"Passengers {i + 1}", min_value=0, step=1, key=f"dep_pass_{i}"
+            )
+            gate = st.text_input(f"Gate {i + 1}", key=f"dep_gate_{i}")
 
-        selected_flight = st.selectbox(
-            "Select Flight",
-            filtered_df["Flight No"].tolist()
+        new_rows.append(
+            {
+                "Flight No": flight_no.upper(),
+                "Airline": airline,
+                "Type": "Departure",
+                "From": "Current Airport",
+                "To": destination,
+                "Scheduled Time": datetime.combine(date.today(), departure_time).strftime(
+                    "%Y-%m-%d %H:%M"
+                ),
+                "Passengers": passengers,
+                "Gate": gate,
+            }
         )
 
-        flight_index = df[df["Flight No"] == selected_flight].index[0]
+    submitted = st.form_submit_button("Save Today’s Flight Entry")
 
-        new_operation = st.selectbox(
-            "Operation",
-            ["Takeoff", "Landing"],
-            index=0 if df.loc[flight_index, "Operation"] == "Takeoff" else 1
-        )
+    if submitted:
+        valid_rows = [row for row in new_rows if row["Flight No"] and row["Airline"]]
 
-        new_status = st.selectbox(
-            "Status",
-            ["Scheduled", "Delayed", "Boarding", "Departed", "Landed", "Cancelled"],
-            index=["Scheduled", "Delayed", "Boarding", "Departed", "Landed", "Cancelled"]
-            .index(df.loc[flight_index, "Status"])
-        )
+        if not valid_rows:
+            st.error("Kam az kam aik valid flight zaroor enter karein.")
+        else:
+            arranged_rows = [calculate_arrangements(row) for row in valid_rows]
+            new_df = pd.DataFrame(arranged_rows, columns=PLAN_COLUMNS)
+            save_plan(new_df)
+            st.success("Today’s flights saved and initial arrangements generated.")
 
-        new_gate = st.text_input("Gate", value=str(df.loc[flight_index, "Gate"]))
+st.markdown("</div>", unsafe_allow_html=True)
 
-        new_remarks = st.text_area(
-            "Remarks",
-            value=str(df.loc[flight_index, "Remarks"])
-        )
+-----------------------------
 
-        if st.button("Update Flight"):
-            df.loc[flight_index, "Operation"] = new_operation
-            df.loc[flight_index, "Status"] = new_status
-            df.loc[flight_index, "Gate"] = new_gate
-            df.loc[flight_index, "Remarks"] = new_remarks
+2. Generate Arrangements
 
-            save_data(df)
-            st.success("Flight updated successfully.")
-            st.rerun()
+-----------------------------
+
+elif menu == "2. Generate Arrangements": st.markdown('<div class="section-box">', unsafe_allow_html=True) st.subheader("Generate Arrangements")
+
+if plan_df.empty:
+    st.info("Pehle Daily Flight Entry karein.")
+else:
+    arranged_df = plan_df.copy()
+    arranged_df = arranged_df.apply(
+        lambda row: calculate_arrangements(row.to_dict()), axis=1, result_type="expand"
+    )
+    arranged_df = arranged_df[PLAN_COLUMNS]
+    save_plan(arranged_df)
+
+    st.success("Arrangements generated successfully.")
+    st.dataframe(arranged_df, use_container_width=True)
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+-----------------------------
+
+3. View Final Plan
+
+-----------------------------
+
+elif menu == "3. View Final Plan": st.markdown('<div class="section-box">', unsafe_allow_html=True) st.subheader("Final Daily Operations Plan")
+
+if plan_df.empty:
+    st.info("No daily plan found.")
+else:
+    plan_df["Scheduled Time"] = pd.to_datetime(plan_df["Scheduled Time"], errors="coerce")
+    plan_df = plan_df.sort_values("Scheduled Time")
+
+    total_arrivals = len(plan_df[plan_df["Type"] == "Arrival"])
+    total_departures = len(plan_df[plan_df["Type"] == "Departure"])
+    total_staff = pd.to_numeric(plan_df["Staff Required"], errors="coerce").fillna(0).sum()
+    total_passengers = pd.to_numeric(plan_df["Passengers"], errors="coerce").fillna(0).sum()
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Arrivals", total_arrivals)
+    col2.metric("Departures", total_departures)
+    col3.metric("Total Staff", int(total_staff))
+    col4.metric("Passengers", int(total_passengers))
+
+    st.divider()
+    st.dataframe(plan_df, use_container_width=True)
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+-----------------------------
+
+4. Edit / Update Plan
+
+-----------------------------
+
+elif menu == "4. Edit / Update Plan": st.markdown('<div class="section-box">', unsafe_allow_html=True) st.subheader("Edit / Update Plan")
+
+if plan_df.empty:
+    st.info("No records available.")
+else:
+    edited_df = st.data_editor(plan_df, use_container_width=True, num_rows="dynamic")
+
+    if st.button("Save Changes"):
+        save_plan(edited_df)
+        st.success("Plan updated successfully.")
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+-----------------------------
+
+5. Delete Flight
+
+-----------------------------
+
+elif menu == "5. Delete Flight": st.markdown('<div class="section-box">', unsafe_allow_html=True) st.subheader("Delete Flight")
+
+if plan_df.empty:
+    st.info("No records available.")
+else:
+    plan_df["Label"] = (
+        plan_df["Flight No"]
+        + " | "
+        + plan_df["Type"]
+        + " | "
+        + plan_df["Scheduled Time"].astype(str)
+    )
+    selected = st.selectbox("Select flight to delete", plan_df["Label"].tolist())
+
+    if st.button("Delete Selected Flight"):
+        plan_df = plan_df[plan_df["Label"] != selected].drop(columns=["Label"])
+        save_plan(plan_df)
+        st.success("Flight deleted successfully.")
+        st.rerun()
+
+st.markdown("</div>", unsafe_allow_html=True)
